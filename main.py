@@ -165,12 +165,18 @@ class HamburguerDetailsScreen(Screen):
     def __init__(self, **kwargs):
         super(HamburguerDetailsScreen, self).__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical')
-        self.hamburguer_name_label = Label(text='Nome do Hambúrguer:')
-        self.hamburguer_ingredients_label = Label(text='Ingredientes:')
-        self.hamburguer_price_label = Label(text='Preço:')
-        self.layout.add_widget(self.hamburguer_name_label)
-        self.layout.add_widget(self.hamburguer_ingredients_label)
-        self.layout.add_widget(self.hamburguer_price_label)
+        self.labels = [Label(text='Nome do Hamburguer:'),
+                       Label(text='Ingredientes:'),
+                       Label(text='Preço:')]
+        self.layout.add_widget(self.labels[0])
+        self.layout.add_widget(self.labels[1])
+        self.layout.add_widget(self.labels[2])
+
+        self.previous_screen = None
+        self.hamburguer_name = None
+        self.hamburguer_data = None
+        self.quantity = 1
+        self.total_price = 0
 
         self.back_button = Button(text='Voltar')
         self.continue_button = Button(text='Continuar')
@@ -183,53 +189,47 @@ class HamburguerDetailsScreen(Screen):
 
     def load_hamburguer_details(self, hamburguer_name):
         self.hamburguer_name = hamburguer_name
-        conn = sqlite3.connect('hamburgueria.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT ingredientes, preco FROM Hamburguers WHERE nome_hamburguer=?', (hamburguer_name,))
-        hamburguer_data = cursor.fetchone()
-        conn.close()
-
-        if hamburguer_data:
-            self.hamburguer_name_label.text = f'Nome do Hambúrguer: {hamburguer_name}'
-            self.hamburguer_ingredients_label.text = f'Ingredientes: {hamburguer_data[0]}'
-            self.hamburguer_price_label.text = f'Preço: {hamburguer_data[1]}€'
-            self.hamburguer_price = hamburguer_data[1]  #armazena o preço
+        with sqlite3.connect('hamburgueria.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT ingredientes, preco FROM Hamburguers WHERE nome_hamburguer=?', (hamburguer_name,))
+            self.hamburguer_data = cursor.fetchone()
+        if self.hamburguer_data:
+            self.labels[0].text = f'Nome do Hamburguer: {self.hamburguer_name}'
+            self.labels[1].text = f'Ingredientes: {self.hamburguer_data[0]}'
+            self.labels[2].text = f'Preço: {self.hamburguer_data[1]}€'
+            self.total_price = self.hamburguer_data[1]
         else:
-            self.hamburguer_name_label.text = 'Erro ao carregar detalhes do hambúrguer.'
+            self.labels[0].text = 'Erro ao carregar detalhes do hamburguer.'
+            conn.close()
 
     def go_back(self, instance):
-        if hasattr(self, 'previous_screen'):
+        if self.previous_screen:
             self.manager.current = self.previous_screen
 
     def continue_order(self, instance):
-        #selecionamento do tamanho
         self.layout.clear_widgets() 
-        type_label = Label(text=f'Tipo de Hambúrguer: {self.hamburguer_name}')
-        self.layout.add_widget(type_label)
+        self.layout.add_widget(Label(text=f'Tipo de Hamburguer: {self.hamburguer_name}'))
 
-        size_label = Label(text='Selecione o tamanho do hambúrguer:')
+        size_layout = BoxLayout()
+        size_layout.add_widget(Label(text='Selecione o tamanho do hamburguer:'))
         self.size_spinner = Spinner(text='Escolha o tamanho', values=('infantil', 'normal', 'duplo'))
-        size_layout = GridLayout(cols=2)
         size_layout.add_widget(size_label)
         size_layout.add_widget(self.size_spinner)
         self.layout.add_widget(size_layout)
 
-        #quantidade com + e -
-        quantity_label = Label(text='Selecione a quantidade:')
+        quantity_layout = BoxLayout()
+        quantity_layout.add_widget(Label(text='Selecione a quantidade:'))
         self.quantity_label = Label(text='1')
         plus_button = Button(text='+')
         minus_button = Button(text='-')
         plus_button.bind(on_press=self.increment_quantity)
         minus_button.bind(on_press=self.decrement_quantity)
-        quantity_layout = BoxLayout()
-        quantity_layout.add_widget(quantity_label)
         quantity_layout.add_widget(minus_button)
         quantity_layout.add_widget(self.quantity_label)
         quantity_layout.add_widget(plus_button)
         self.layout.add_widget(quantity_layout)
 
-        #preço atual
-        self.total_price_label = Label(text=f'Preço total: {self.hamburguer_price}€')
+        self.total_price_label = Label(text=f'Preço total: {self.total_price}€')
         self.layout.add_widget(self.total_price_label)
 
         confirm_button = Button(text='Confirmar')
@@ -237,31 +237,28 @@ class HamburguerDetailsScreen(Screen):
         self.layout.add_widget(confirm_button)
 
     def increment_quantity(self, instance):
-        quantity = int(self.quantity_label.text)
-        quantity += 1
-        self.quantity_label.text = str(quantity)
+        self.quantity += 1
+        self.quantity_label.text = str(self.quantity)
         self.update_total_price()
 
     def decrement_quantity(self, instance):
-        quantity = int(self.quantity_label.text)
-        if quantity > 1:
-            quantity -= 1
-            self.quantity_label.text = str(quantity)
+        if self.quantity > 1:
+            self.quantity -= 1
+            self.quantity_label.text = str(self.quantity)
             self.update_total_price()
 
     def update_total_price(self):
-        quantity = int(self.quantity_label.text)
-        total_price = self.hamburguer_price * quantity
-        self.total_price_label.text = f'Preço total: {total_price}€'
+        self.total_price = self.hamburguer_data[1] * self.quantity
+        self.total_price_label.text = f'Preço total: {self.total_price}€'
 
     def confirm_order(self, instance):
-        selected_size = self.size_spinner.text  #obtém o tamanho selcionado do spinner
-        quantity = int(self.quantity_label.text)
-        total_price = self.hamburguer_price * quantity
+        selected_size = self.size_spinner.text
         order_screen = self.manager.get_screen('order')
-        order_screen.layout.add_widget(Button(text=f'{self.hamburguer_name} - {selected_size} x{quantity} - {total_price}€'))
+        order_screen.layout.add_widget(
+            Button(text=f'{self.hamburguer_name} - {selected_size} x{self.quantity} - {self.total_price}€'))
         review_screen = self.manager.get_screen('review')
-        review_screen.add_order(f'{self.hamburguer_name} - {selected_size} x{quantity} - {total_price}€', total_price)
+        review_screen.add_order(f'{self.hamburguer_name} - {selected_size} x{self.quantity} - {self.total_price}€',
+                                self.total_price)
         self.manager.current = 'order'
 
 
@@ -275,9 +272,9 @@ class ReviewOrderScreen(Screen):
         self.layout.add_widget(self.total_price_label)
         self.add_widget(self.layout)
         self.orders = []
-        self.total_price = 0
+        self.total_price = 0.0
 
-        # informaçoes cliente
+        # Informações do cliente
         self.name_input = TextInput(hint_text='Nome')
         self.address_input = TextInput(hint_text='Morada')
         self.phone_input = TextInput(hint_text='Telemóvel')
@@ -287,8 +284,8 @@ class ReviewOrderScreen(Screen):
 
         self.buttons_layout = BoxLayout(size_hint_y=None, height=50)
         self.confirm_button = Button(text='Confirmar Pedido')
-        self.back_button = Button(text='Voltar')
         self.confirm_button.bind(on_press=self.confirm_order)
+        self.back_button = Button(text='Voltar')
         self.back_button.bind(on_press=self.go_back)
         self.buttons_layout.add_widget(self.back_button)
         self.buttons_layout.add_widget(self.confirm_button)
@@ -298,49 +295,73 @@ class ReviewOrderScreen(Screen):
         self.orders.append(order_text)
         self.total_price += price
         self.orders_label.text += f'\n{order_text}'
-        self.total_price_label.text = f'Preço total do pedido: {self.total_price}€'
+        self.total_price_label.text = f'Preço total do pedido: {self.total_price:.2f}€'
 
     def confirm_order(self, instance):
-    #obtem dados clientes
+        """
+        Bevestigt de bestelling door de klantgegevens en besteldetails op te slaan in de database.
+        
+        Args:
+            instance: Het exemplaar van de knop die de gebeurtenis heeft geactiveerd.
+        
+        Retourneert:
+            Geen
+        
+        Deze functie haalt de klantgegevens op uit de invoervelden, maakt verbinding met de database,
+        en voegt de klantgegevens in de tabel 'Clientes' in. Vervolgens gaat het door de orders
+        heen en extraheert het de benodigde informatie uit elke besteltekst. De geextracteerde
+        informatie wordt gebruikt om de besteldetails in de tabel 'Pedidos' in te voegen. Als er
+        een fout optreedt tijdens het verwerken van een bestelling, wordt deze afgedrukt en
+        gaat het verwerken door met de volgende bestelling. Na het opslaan van de besteldetails
+        wordt de lijst van bestellingen leeg gemaakt, wordt het totaalbedrag gereset en worden de
+        invoervelden leeg gemaakt. Ten slotte gaat het terug naar de welkomstscherm.
+        """
         name = self.name_input.text
         address = self.address_input.text
         phone = self.phone_input.text
 
-        # Conectar e salva o pedido ao banco de dados
-        conn = sqlite3.connect('hamburgueria.db')
-        cursor = conn.cursor()
+        # Conectar ao banco de dados e salvar o pedido
+        with sqlite3.connect('hamburgueria.db') as conn:
+            cursor = conn.cursor()
 
-        #insere dados de cliente
-        cursor.execute('INSERT INTO Clientes (nome, morada, telefone) VALUES (?, ?, ?)', (name, address, phone))
-        cliente_id = cursor.lastrowid  #obtem o id recem inserido
-        print(f"Cliente registrado com ID {cliente_id}")
+            # Insere dados de cliente
+            cursor.execute('INSERT INTO Clientes (nome, morada, telefone) VALUES (?, ?, ?)', (name, address, phone))
+            cliente_id = cursor.lastrowid
+            conn.commit()
 
-        #dados dos pedidos
-        for order in self.orders:
-            nome_hamburguer = order.split(' - ')[0]
-            quantidade = int(order.split(' x')[1].split(' - ')[0])
-            tamanho = order.split(' - ')[1].lower()
-            valor_str = order.split(' - ')[2][:-1]
-            valor_float = float(valor_str)
+            # Dados dos pedidos
+            for order in self.orders:
+                try:
+                    # Dividir a string do pedido para extrair as partes necessárias
+                    parts = order.split('x')
+                    if len(parts) != 2:
+                        raise ValueError(f"Formato do pedido inválido: {order}")
 
-            #verifica se tamnhao valido
-            if tamanho not in ('infantil', 'normal', 'duplo'):
-                print(f"Tamanho de hambúrguer inválido: {tamanho}. Pedido não foi registrado.")
-                continue
+                    nome_hamburguer, rest = parts[0].strip(), parts[1].strip()
+                    rest_parts = rest.split(' - ')
+                    if len(rest_parts) == 2:
+                        quantidade, valor_str = rest_parts
+                        tamanho = 'normal'  # default size
+                    elif len(rest_parts) == 3:
+                        quantidade, tamanho, valor_str = rest_parts
+                    else:
+                        raise ValueError(f"Formato do pedido inválido: {order}")
 
-            #insere dados pedidos ##erro
-            cursor.execute('INSERT INTO Pedidos (id_cliente, nome_hamburguer, quantidade, tamanho, valor_total) VALUES (?, ?, ?, ?, ?)',
-                        (cliente_id, nome_hamburguer, quantidade, tamanho, valor_float))
-            pedido_id = cursor.lastrowid  #obtem o id recem inserido
-            print(f"Pedido registrado com ID {pedido_id} para o cliente {cliente_id}")
+                    # Insere dados de pedido
+                    cursor.execute('INSERT INTO Pedidos (id_cliente, nome_hamburguer, quantidade, tamanho, valor_total) VALUES (?, ?, ?, ?, ?)',
+                                   (cliente_id, nome_hamburguer, int(quantidade), tamanho, float(valor_str[:-1])))
 
-        conn.commit()
-        conn.close()
+                except ValueError as e:
+                    print(f"Erro ao processar pedido: {order}. Erro: {e}")
+                    continue
 
+            conn.commit()
+            print(f"Pedidos registrados para o cliente {cliente_id}")
+            print(f"Pedidos registrados para o cliente {cliente_id}")
 
-        #limpa o pedido apos confirmaçao
+        # Limpa o pedido após confirmação
         self.orders.clear()
-        self.total_price = 0
+        self.total_price = 0.0
         self.orders_label.text = 'Seu Pedido:'
         self.total_price_label.text = 'Preço total do pedido: 0€'
         self.name_input.text = ''
@@ -348,6 +369,7 @@ class ReviewOrderScreen(Screen):
         self.phone_input.text = ''
 
         self.manager.current = 'welcome'
+
 
     def go_back(self, instance):
         self.manager.current = 'order'
