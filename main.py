@@ -320,7 +320,8 @@ class ReviewOrderScreen(Screen):
             nome_hamburguer = order.split(' - ')[0]
             quantidade = int(order.split(' x')[1].split(' - ')[0])
             tamanho = order.split(' - ')[1].lower()
-            valor_total = float(order.split(' - ')[2][3:])
+            valor_str = order.split(' - ')[2][:-1]
+            valor_float = float(valor_str)
 
             #verifica se tamnhao valido
             if tamanho not in ('infantil', 'normal', 'duplo'):
@@ -329,7 +330,7 @@ class ReviewOrderScreen(Screen):
 
             #insere dados pedidos ##erro
             cursor.execute('INSERT INTO Pedidos (id_cliente, nome_hamburguer, quantidade, tamanho, valor_total) VALUES (?, ?, ?, ?, ?)',
-                        (cliente_id, nome_hamburguer, quantidade, tamanho, valor_total))
+                        (cliente_id, nome_hamburguer, quantidade, tamanho, valor_float))
             pedido_id = cursor.lastrowid  #obtem o id recem inserido
             print(f"Pedido registrado com ID {pedido_id} para o cliente {cliente_id}")
 
